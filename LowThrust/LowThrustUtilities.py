@@ -9,13 +9,14 @@ a copy of the license with this file. If not, please or visit:
 http://tudat.tudelft.nl/LICENSE.
 
 AE4866 Propagation and Optimization in Astrodynamics
-Lunar Ascent
+Low Thrust
 First name: ***COMPLETE HERE***
 Last name: ***COMPLETE HERE***
 Student number: ***COMPLETE HERE***
 
 This module defines useful functions that will be called by the main script, where the optimization is executed.
 '''
+
 ###########################################################################
 # IMPORT STATEMENTS #######################################################
 ###########################################################################
@@ -27,93 +28,37 @@ import numpy as np
 import tudatpy
 from tudatpy.io import save2txt
 from tudatpy.kernel import constants
-from tudatpy.kernel.interface import spice_interface
 from tudatpy.kernel.simulation import propagation_setup
-from tudatpy.kernel.astro import conversion
 from tudatpy.kernel.math import interpolators
 
 # Problem-specific imports
-from LunarAscentProblem import LunarAscentProblem
+import LowThrustProblem as LowThrust
+
 
 ###########################################################################
 # USEFUL FUNCTIONS ########################################################
 ###########################################################################
 
 
-def get_initial_state(simulation_start_epoch: float,
-                      bodies: tudatpy.kernel.simulation.environment_setup.SystemOfBodies) -> np.ndarray:
-    """
-    Converts the initial state to inertial coordinates.
-
-    The initial state is expressed in Moon-centered spherical coordinates.
-    These are first converted into Moon-centered cartesian coordinates,
-    then they are finally converted in the global (inertial) coordinate
-    system.
-
-    Parameters
-    ----------
-    simulation_start_epoch : float
-        Start of the simulation [s] with t=0 at J2000.
-    bodies : tudatpy.kernel.simulation.environment_setup.SystemOfBodies
-        System of bodies present in the simulation.
-
-    Returns
-    -------
-    initial_state_inertial_coordinates : np.ndarray
-        The initial state of the vehicle expressed in inertial coordinates.
-    """
-    # Set initial spherical elements
-    # position vector (m)
-    radius = spice_interface.get_average_radius('Moon') + 100.0
-    # latitude (rad)
-    latitude = np.deg2rad(0.6875)
-    # longitude (rad)
-    longitude = np.deg2rad(23.4333)
-    # velocity (m/s)
-    speed = 10.0
-    # flight path angle (rad)
-    flight_path_angle = np.deg2rad(90.0)
-    # heading angle (rad)
-    heading_angle = np.deg2rad(90.0)
-    # Convert spherical elements to body-fixed cartesian coordinates
-    initial_cartesian_state_body_fixed = conversion.spherical_to_cartesian(radius,
-                                                                latitude,
-                                                                longitude,
-                                                                speed,
-                                                                flight_path_angle,
-                                                                heading_angle)
-    # Get rotational ephemerides of the Moon
-    moon_rotational_model = bodies.get_body('Moon').rotation_model
-    # Transform the state to the global (inertial) frame
-    initial_state_inertial_coordinates = conversion.transform_to_inertial_orientation(initial_cartesian_state_body_fixed,
-                                                                                      simulation_start_epoch,
-                                                                                      moon_rotational_model)
-    return initial_state_inertial_coordinates
-
-
-def get_termination_settings(simulation_start_epoch: float,
-                             maximum_duration: float,
-                             termination_altitude: float,
-                             vehicle_dry_mass: float) \
+def get_termination_settings(trajectory_parameters,
+                             minimum_mars_distance: float,
+                             time_buffer: float) \
         -> tudatpy.kernel.simulation.propagation_setup.propagator.PropagationTerminationSettings:
     """
     Get the termination settings for the simulation.
 
     Termination settings currently include:
-    - simulation time (one day)
-    - lower and upper altitude boundaries (0-100 km)
-    - fuel run-out
+    - simulation time (propagation stops if it is greater than the one provided by the hodographic trajectory)
+    - distance to Mars (propagation stops if the relative distance is lower than the target distance)
 
     Parameters
     ----------
-    simulation_start_epoch : float
-        Start of the simulation [s] with t=0 at J2000.
-    maximum_duration : float
-        Maximum duration of the simulation [s].
-    termination_altitude : float
-        Maximum altitude [m].
-    vehicle_dry_mass : float
-        Dry mass of the spacecraft [kg].
+    trajectory_parameters : list[floats]
+        List of trajectory parameters.
+    minimum_mars_distance : float
+        Minimum distance from Mars at which the propagation stops.
+    time_buffer : float
+        Time interval between the simulation start epoch and the beginning of the hodographic trajectory.
 
     Returns
     -------
@@ -122,35 +67,20 @@ def get_termination_settings(simulation_start_epoch: float,
     """
     # Create single PropagationTerminationSettings objects
     # Time
+    final_time = LowThrust.get_trajectory_final_time(trajectory_parameters,
+                                                     time_buffer)
     time_termination_settings = propagation_setup.propagator.time_termination(
-        simulation_start_epoch + maximum_duration,
-        terminate_exactly_on_final_condition=False
-    )
+        final_time,
+        terminate_exactly_on_final_condition=False)
     # Altitude
-    upper_altitude_termination_settings = propagation_setup.propagator.dependent_variable_termination(
-        dependent_variable_settings=propagation_setup.dependent_variable.altitude('Vehicle', 'Moon'),
-        limit_value=termination_altitude,
-        use_as_lower_limit=False,
-        terminate_exactly_on_final_condition=False
-    )
-    lower_altitude_termination_settings = propagation_setup.propagator.dependent_variable_termination(
-        dependent_variable_settings=propagation_setup.dependent_variable.altitude('Vehicle', 'Moon'),
-        limit_value=0.0,
+    relative_distance_termination_settings = propagation_setup.propagator.dependent_variable_termination(
+        dependent_variable_settings=propagation_setup.dependent_variable.relative_distance('Vehicle', 'Mars'),
+        limit_value=minimum_mars_distance,
         use_as_lower_limit=True,
-        terminate_exactly_on_final_condition=False
-    )
-    # Vehicle mass
-    mass_termination_settings = propagation_setup.propagator.dependent_variable_termination(
-        dependent_variable_settings=propagation_setup.dependent_variable.body_mass('Vehicle'),
-        limit_value=vehicle_dry_mass,
-        use_as_lower_limit=True,
-        terminate_exactly_on_final_condition=False
-    )
+        terminate_exactly_on_final_condition=False)
     # Define list of termination settings
     termination_settings_list = [time_termination_settings,
-                                 upper_altitude_termination_settings,
-                                 lower_altitude_termination_settings,
-                                 mass_termination_settings]
+                                 relative_distance_termination_settings]
     # Create termination settings object
     hybrid_termination_settings = propagation_setup.propagator.hybrid_termination(termination_settings_list,
                                                                                   fulfill_single_condition=True)
@@ -162,10 +92,10 @@ def get_dependent_variable_save_settings() -> list:
     """
     Retrieves the dependent variables to save.
 
-    Currently, the dependent variables saved include:
-    - the altitude wrt the Moon
-    - the relative speed wrt the Moon
-    - the flight path angle of the vehicle
+    Currently, the dependent variables saved include the relative distance between the spacecraft and:
+    - Earth
+    - the Sun
+    - Mars
 
     Parameters
     ----------
@@ -176,9 +106,9 @@ def get_dependent_variable_save_settings() -> list:
     dependent_variables_to_save : list[tudatpy.kernel.simulation.propagation_setup.dependent_variable]
         List of dependent variables to save.
     """
-    dependent_variables_to_save = [propagation_setup.dependent_variable.altitude('Vehicle', 'Moon'),
-                                   propagation_setup.dependent_variable.relative_speed('Vehicle', 'Moon'),
-                                   propagation_setup.dependent_variable.flight_path_angle('Vehicle', 'Moon')]
+    dependent_variables_to_save = [propagation_setup.dependent_variable.relative_distance('Vehicle', 'Earth'),
+                                   propagation_setup.dependent_variable.relative_distance('Vehicle', 'Sun'),
+                                   propagation_setup.dependent_variable.relative_distance('Vehicle', 'Mars')]
     return dependent_variables_to_save
 
 
@@ -197,7 +127,7 @@ def get_integrator_settings(propagator_index: int,
     or step size for fixed step size integrators). The code, as provided, runs the following:
     - if j=0,1,2,3: a variable-step-size, multi-stage integrator is used (see multiStageTypes list for specific type),
                      with tolerances 10^(-10+*k)
-    - if j=4      : a fixed-step-size RK4 integrator is used, with step-size 2^(k)
+    - if j=4      : a fixed-step-size RK4 integrator is used, with step-size 7200*2^(k)
 
     Parameters
     ----------
@@ -229,6 +159,7 @@ def get_integrator_settings(propagator_index: int,
                                propagation_setup.integrator.RKCoefficientSets.rkf_56,
                                propagation_setup.integrator.RKCoefficientSets.rkf_78,
                                propagation_setup.integrator.RKCoefficientSets.rkdp_87]
+
     # Use variable step-size integrator
     if integrator_index < 4:
         # Select variable-step integrator
@@ -240,16 +171,16 @@ def get_integrator_settings(propagator_index: int,
         # Here (epsilon, inf) are set as respectively min and max step sizes
         # also note that the relative and absolute tolerances are the same value
         integrator_settings = integrator.runge_kutta_variable_step_size(simulation_start_epoch,
-                                                                                          1.0,
-                                                                                          current_coefficient_set,
-                                                                                          np.finfo(float).eps,
-                                                                                          np.inf,
-                                                                                          current_tolerance,
-                                                                                          current_tolerance)
+                                                                        1.0,
+                                                                        current_coefficient_set,
+                                                                        np.finfo(float).eps,
+                                                                        np.inf,
+                                                                        current_tolerance,
+                                                                        current_tolerance)
     # Use fixed step-size integrator
     else:
         # Compute time step
-        fixed_step_size = 2 ** settings_index
+        fixed_step_size = 7200.0 * 2.0 ** settings_index
         # Create integrator settings
         integrator = propagation_setup.integrator
         integrator_settings = integrator.runge_kutta_4(simulation_start_epoch,
@@ -260,10 +191,12 @@ def get_integrator_settings(propagator_index: int,
 # NOTE TO STUDENTS: THIS FUNCTION CAN BE EXTENDED TO GENERATE A MORE ROBUST BENCHMARK (USING MORE THAN 2 RUNS)
 def generate_benchmarks(simulation_start_epoch: float,
                         specific_impulse: float,
+                        minimum_mars_distance: float,
+                        time_buffer: float,
                         bodies: tudatpy.kernel.simulation.environment_setup.SystemOfBodies,
                         benchmark_propagator_settings:
                         tudatpy.kernel.simulation.propagation_setup.propagator.MultiTypePropagatorSettings,
-                        thrust_parameters: list,
+                        trajectory_parameters: list,
                         are_dependent_variables_present: bool,
                         output_path: str = None):
     """
@@ -281,12 +214,18 @@ def generate_benchmarks(simulation_start_epoch: float,
     ----------
     simulation_start_epoch : float
         The start time of the simulation in seconds.
-    bodies : tudatpy.kernel.simulation.environment_setup.SystemOfBodies
+    specific_impulse : float
+        Constant specific impulse of the vehicle.  
+    minimum_mars_distance : float
+        Minimum distance from Mars at which the propagation stops.
+    time_buffer : float
+        Time interval between the simulation start epoch and the beginning of the hodographic trajectory.
+    bodies : tudatpy.kernel.simulation.environment_setup.SystemOfBodies,
         System of bodies present in the simulation.
     benchmark_propagator_settings
         Propagator settings object which is used to run the benchmark propagations.
-    thrust_parameters
-        List that represents the thrust parameters for the spacecraft.
+    trajectory_parameters
+        List that represents the trajectory parameters for the spacecraft.
     are_dependent_variables_present : bool
         If there are dependent variables to save.
     output_path : str (default: None)
@@ -299,12 +238,12 @@ def generate_benchmarks(simulation_start_epoch: float,
     """
     ### CREATION OF THE TWO BENCHMARKS ###
     # Define benchmarks' step sizes
-    first_benchmark_step_size = 1.0  # s
+    first_benchmark_step_size = constants.JULIAN_DAY  # s
     second_benchmark_step_size = 2.0 * first_benchmark_step_size
+
     # Create integrator settings for the first benchmark, using a fixed step size RKDP8(7) integrator
     # (the minimum and maximum step sizes are set equal, while both tolerances are set to inf)
-    benchmark_integrator = propagation_setup.integrator
-    benchmark_integrator_settings = benchmark_integrator.runge_kutta_variable_step_size(
+    first_benchmark_integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(
         simulation_start_epoch,
         first_benchmark_step_size,
         propagation_setup.integrator.RKCoefficientSets.rkdp_87,
@@ -312,19 +251,20 @@ def generate_benchmarks(simulation_start_epoch: float,
         first_benchmark_step_size,
         np.inf,
         np.inf)
-    # Create Lunar Ascent Problem object for first benchmark
-    first_benchmark = LunarAscentProblem(bodies,
-                                         benchmark_integrator_settings,
-                                         benchmark_propagator_settings,
-                                         specific_impulse,
-                                         simulation_start_epoch)
+    # Create Low Thrust Problem object for first benchmark
+    first_benchmark = LowThrust.LowThrustProblem(bodies,
+                                                 first_benchmark_integrator_settings,
+                                                 benchmark_propagator_settings,
+                                                 specific_impulse,
+                                                 minimum_mars_distance,
+                                                 time_buffer,
+                                                 perform_propagation=True)
     print('Running first benchmark...')
-    # Set new thrust parameters and evaluate fitness
-    first_benchmark.fitness(thrust_parameters)
+    # Set new trajectory parameters and evaluate fitness
+    first_benchmark.fitness(trajectory_parameters)
 
     # Create integrator settings for the second benchmark in the same way
-    benchmark_integrator = propagation_setup.integrator
-    benchmark_integrator_settings = benchmark_integrator.runge_kutta_variable_step_size(
+    second_benchmark_integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(
         simulation_start_epoch,
         second_benchmark_step_size,
         propagation_setup.integrator.RKCoefficientSets.rkdp_87,
@@ -332,15 +272,17 @@ def generate_benchmarks(simulation_start_epoch: float,
         second_benchmark_step_size,
         np.inf,
         np.inf)
-    # Create Lunar Ascent Problem object for second benchmark
-    second_benchmark = LunarAscentProblem(bodies,
-                                          benchmark_integrator_settings,
-                                          benchmark_propagator_settings,
-                                          specific_impulse,
-                                          simulation_start_epoch)
+    # Create Low Thrust Problem object for second benchmark
+    second_benchmark = LowThrust.LowThrustProblem(bodies,
+                                                  second_benchmark_integrator_settings,
+                                                  benchmark_propagator_settings,
+                                                  specific_impulse,
+                                                  minimum_mars_distance,
+                                                  time_buffer,
+                                                  perform_propagation=True)
     print('Running second benchmark...')
-    # Set new thrust parameters and evaluate fitness
-    second_benchmark.fitness(thrust_parameters)
+    # Set new trajectory parameters and evaluate fitness
+    second_benchmark.fitness(trajectory_parameters)
 
     ### WRITE BENCHMARK RESULTS TO FILE ###
     # Retrieve state history
@@ -361,8 +303,8 @@ def generate_benchmarks(simulation_start_epoch: float,
         second_benchmark_dependent_variable = second_benchmark.get_last_run_dependent_variable_history()
         # Write results to file
         if output_path is not None:
-            save2txt(first_benchmark_dependent_variable, 'benchmark_1_dependent_variables.dat',  output_path)
-            save2txt(second_benchmark_dependent_variable,  'benchmark_2_dependent_variables.dat',  output_path)
+            save2txt(first_benchmark_dependent_variable, 'benchmark_1_dependent_variables.dat', output_path)
+            save2txt(second_benchmark_dependent_variable, 'benchmark_2_dependent_variables.dat', output_path)
         # Add items to be returned
         return_list.append(first_benchmark_dependent_variable)
         return_list.append(second_benchmark_dependent_variable)
@@ -407,7 +349,7 @@ def compare_benchmarks(first_benchmark: dict,
     # Calculate the difference between the states and dependent variables in an iterative manner
     for second_epoch in second_benchmark.keys():
         benchmark_difference[second_epoch] = benchmark_interpolator.interpolate(second_epoch) - \
-                                         second_benchmark[second_epoch]
+                                             second_benchmark[second_epoch]
     # Write results to files
     if output_path is not None:
         save2txt(benchmark_difference, filename, output_path)

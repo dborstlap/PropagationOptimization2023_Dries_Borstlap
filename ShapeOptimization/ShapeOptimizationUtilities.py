@@ -9,13 +9,14 @@ a copy of the license with this file. If not, please or visit:
 http://tudat.tudelft.nl/LICENSE.
 
 AE4866 Propagation and Optimization in Astrodynamics
-Lunar Ascent
+Shape Optimization
 First name: ***COMPLETE HERE***
 Last name: ***COMPLETE HERE***
 Student number: ***COMPLETE HERE***
 
 This module defines useful functions that will be called by the main script, where the optimization is executed.
 '''
+
 ###########################################################################
 # IMPORT STATEMENTS #######################################################
 ###########################################################################
@@ -33,7 +34,7 @@ from tudatpy.kernel.astro import conversion
 from tudatpy.kernel.math import interpolators
 
 # Problem-specific imports
-from LunarAscentProblem import LunarAscentProblem
+from ShapeOptimizationProblem import ShapeOptimizationProblem
 
 ###########################################################################
 # USEFUL FUNCTIONS ########################################################
@@ -45,8 +46,8 @@ def get_initial_state(simulation_start_epoch: float,
     """
     Converts the initial state to inertial coordinates.
 
-    The initial state is expressed in Moon-centered spherical coordinates.
-    These are first converted into Moon-centered cartesian coordinates,
+    The initial state is expressed in Earth-centered spherical coordinates.
+    These are first converted into Earth-centered cartesian coordinates,
     then they are finally converted in the global (inertial) coordinate
     system.
 
@@ -64,37 +65,36 @@ def get_initial_state(simulation_start_epoch: float,
     """
     # Set initial spherical elements
     # position vector (m)
-    radius = spice_interface.get_average_radius('Moon') + 100.0
+    radial_distance = spice_interface.get_average_radius('Earth') + 120.0E3
     # latitude (rad)
-    latitude = np.deg2rad(0.6875)
+    latitude = np.deg2rad(0.0)
     # longitude (rad)
-    longitude = np.deg2rad(23.4333)
+    longitude = np.deg2rad(68.75)
     # velocity (m/s)
-    speed = 10.0
+    speed = 7.83E3
     # flight path angle (rad)
-    flight_path_angle = np.deg2rad(90.0)
+    flight_path_angle = np.deg2rad(-1.5)
     # heading angle (rad)
-    heading_angle = np.deg2rad(90.0)
+    heading_angle = np.deg2rad(34.37)
+
     # Convert spherical elements to body-fixed cartesian coordinates
-    initial_cartesian_state_body_fixed = conversion.spherical_to_cartesian(radius,
+    initial_cartesian_state_body_fixed = conversion.spherical_to_cartesian(radial_distance,
                                                                 latitude,
                                                                 longitude,
                                                                 speed,
                                                                 flight_path_angle,
                                                                 heading_angle)
-    # Get rotational ephemerides of the Moon
-    moon_rotational_model = bodies.get_body('Moon').rotation_model
+    # Get rotational ephemerides of the Earth
+    earth_rotational_model = bodies.get_body('Earth').rotation_model
     # Transform the state to the global (inertial) frame
-    initial_state_inertial_coordinates = conversion.transform_to_inertial_orientation(initial_cartesian_state_body_fixed,
+    initial_cartesian_state_inertial = conversion.transform_to_inertial_orientation(initial_cartesian_state_body_fixed,
                                                                                       simulation_start_epoch,
-                                                                                      moon_rotational_model)
-    return initial_state_inertial_coordinates
-
+                                                                                      earth_rotational_model)
+    return initial_cartesian_state_inertial
 
 def get_termination_settings(simulation_start_epoch: float,
                              maximum_duration: float,
-                             termination_altitude: float,
-                             vehicle_dry_mass: float) \
+                             termination_altitude: float) \
         -> tudatpy.kernel.simulation.propagation_setup.propagator.PropagationTerminationSettings:
     """
     Get the termination settings for the simulation.
@@ -111,9 +111,7 @@ def get_termination_settings(simulation_start_epoch: float,
     maximum_duration : float
         Maximum duration of the simulation [s].
     termination_altitude : float
-        Maximum altitude [m].
-    vehicle_dry_mass : float
-        Dry mass of the spacecraft [kg].
+        Minimum altitude [m].
 
     Returns
     -------
@@ -127,31 +125,17 @@ def get_termination_settings(simulation_start_epoch: float,
         terminate_exactly_on_final_condition=False
     )
     # Altitude
-    upper_altitude_termination_settings = propagation_setup.propagator.dependent_variable_termination(
-        dependent_variable_settings=propagation_setup.dependent_variable.altitude('Vehicle', 'Moon'),
-        limit_value=termination_altitude,
-        use_as_lower_limit=False,
-        terminate_exactly_on_final_condition=False
-    )
     lower_altitude_termination_settings = propagation_setup.propagator.dependent_variable_termination(
-        dependent_variable_settings=propagation_setup.dependent_variable.altitude('Vehicle', 'Moon'),
-        limit_value=0.0,
-        use_as_lower_limit=True,
-        terminate_exactly_on_final_condition=False
-    )
-    # Vehicle mass
-    mass_termination_settings = propagation_setup.propagator.dependent_variable_termination(
-        dependent_variable_settings=propagation_setup.dependent_variable.body_mass('Vehicle'),
-        limit_value=vehicle_dry_mass,
+        dependent_variable_settings=propagation_setup.dependent_variable.altitude('Capsule', 'Earth'),
+        limit_value=termination_altitude,
         use_as_lower_limit=True,
         terminate_exactly_on_final_condition=False
     )
     # Define list of termination settings
     termination_settings_list = [time_termination_settings,
-                                 upper_altitude_termination_settings,
-                                 lower_altitude_termination_settings,
-                                 mass_termination_settings]
-    # Create termination settings object
+                                 lower_altitude_termination_settings]
+
+    # Create termination settings object (when either the time of altitude condition is reached: propaation terminates)
     hybrid_termination_settings = propagation_setup.propagator.hybrid_termination(termination_settings_list,
                                                                                   fulfill_single_condition=True)
     return hybrid_termination_settings
@@ -163,9 +147,8 @@ def get_dependent_variable_save_settings() -> list:
     Retrieves the dependent variables to save.
 
     Currently, the dependent variables saved include:
-    - the altitude wrt the Moon
-    - the relative speed wrt the Moon
-    - the flight path angle of the vehicle
+    - the Mach number
+    - the altitude wrt the Earth
 
     Parameters
     ----------
@@ -176,9 +159,8 @@ def get_dependent_variable_save_settings() -> list:
     dependent_variables_to_save : list[tudatpy.kernel.simulation.propagation_setup.dependent_variable]
         List of dependent variables to save.
     """
-    dependent_variables_to_save = [propagation_setup.dependent_variable.altitude('Vehicle', 'Moon'),
-                                   propagation_setup.dependent_variable.relative_speed('Vehicle', 'Moon'),
-                                   propagation_setup.dependent_variable.flight_path_angle('Vehicle', 'Moon')]
+    dependent_variables_to_save = [propagation_setup.dependent_variable.mach_number('Capsule', 'Earth'),
+                                   propagation_setup.dependent_variable.altitude('Capsule', 'Earth')]
     return dependent_variables_to_save
 
 
@@ -213,8 +195,7 @@ def get_integrator_settings(propagator_index: int,
             3 -> RKDP7(8)
             4 -> RK4
     settings_index : int
-        Index that selects the tolerance or the step size
-        (depending on the integrator type).
+        Index that selects the tolerance or the step size (depending on the integrator type).
     simulation_start_epoch : float
         Start of the simulation [s] with t=0 at J2000.
 
@@ -222,13 +203,13 @@ def get_integrator_settings(propagator_index: int,
     -------
     integrator_settings : tudatpy.kernel.simulation.propagation_setup.integrator.IntegratorSettings
         Integrator settings to be provided to the dynamics simulator.
-
     """
     # Define list of multi-stage integrators
     multi_stage_integrators = [propagation_setup.integrator.RKCoefficientSets.rkf_45,
                                propagation_setup.integrator.RKCoefficientSets.rkf_56,
                                propagation_setup.integrator.RKCoefficientSets.rkf_78,
                                propagation_setup.integrator.RKCoefficientSets.rkdp_87]
+
     # Use variable step-size integrator
     if integrator_index < 4:
         # Select variable-step integrator
@@ -258,7 +239,8 @@ def get_integrator_settings(propagator_index: int,
 
 
 # NOTE TO STUDENTS: THIS FUNCTION CAN BE EXTENDED TO GENERATE A MORE ROBUST BENCHMARK (USING MORE THAN 2 RUNS)
-def generate_benchmarks(simulation_start_epoch: float,
+def generate_benchmarks(benchmark_step_size,
+                        simulation_start_epoch: float,
                         specific_impulse: float,
                         bodies: tudatpy.kernel.simulation.environment_setup.SystemOfBodies,
                         benchmark_propagator_settings:
@@ -281,7 +263,7 @@ def generate_benchmarks(simulation_start_epoch: float,
     ----------
     simulation_start_epoch : float
         The start time of the simulation in seconds.
-    bodies : tudatpy.kernel.simulation.environment_setup.SystemOfBodies
+    bodies : tudatpy.kernel.simulation.environment_setup.SystemOfBodies,
         System of bodies present in the simulation.
     benchmark_propagator_settings
         Propagator settings object which is used to run the benchmark propagations.
@@ -299,8 +281,9 @@ def generate_benchmarks(simulation_start_epoch: float,
     """
     ### CREATION OF THE TWO BENCHMARKS ###
     # Define benchmarks' step sizes
-    first_benchmark_step_size = 1.0  # s
+    first_benchmark_step_size = 2.0  # s
     second_benchmark_step_size = 2.0 * first_benchmark_step_size
+
     # Create integrator settings for the first benchmark, using a fixed step size RKDP8(7) integrator
     # (the minimum and maximum step sizes are set equal, while both tolerances are set to inf)
     benchmark_integrator = propagation_setup.integrator
@@ -312,12 +295,12 @@ def generate_benchmarks(simulation_start_epoch: float,
         first_benchmark_step_size,
         np.inf,
         np.inf)
-    # Create Lunar Ascent Problem object for first benchmark
-    first_benchmark = LunarAscentProblem(bodies,
-                                         benchmark_integrator_settings,
-                                         benchmark_propagator_settings,
-                                         specific_impulse,
-                                         simulation_start_epoch)
+
+    # Create Shape Optimization Problem object for first benchmark
+    first_benchmark = ShapeOptimizationProblem(bodies,
+                                               benchmark_integrator_settings,
+                                               benchmark_propagator_settings,
+                                               specific_impulse)
     print('Running first benchmark...')
     # Set new thrust parameters and evaluate fitness
     first_benchmark.fitness(thrust_parameters)
@@ -332,12 +315,12 @@ def generate_benchmarks(simulation_start_epoch: float,
         second_benchmark_step_size,
         np.inf,
         np.inf)
-    # Create Lunar Ascent Problem object for second benchmark
-    second_benchmark = LunarAscentProblem(bodies,
-                                          benchmark_integrator_settings,
-                                          benchmark_propagator_settings,
-                                          specific_impulse,
-                                          simulation_start_epoch)
+
+    # Create Shape Optimization Problem object for second benchmark
+    second_benchmark = ShapeOptimizationProblem(bodies,
+                                                benchmark_integrator_settings,
+                                                benchmark_propagator_settings,
+                                                specific_impulse)
     print('Running second benchmark...')
     # Set new thrust parameters and evaluate fitness
     second_benchmark.fitness(thrust_parameters)
@@ -410,6 +393,8 @@ def compare_benchmarks(first_benchmark: dict,
                                          second_benchmark[second_epoch]
     # Write results to files
     if output_path is not None:
-        save2txt(benchmark_difference, filename, output_path)
+        save2txt(benchmark_difference,
+                 filename,
+                 output_path)
     # Return the interpolator
     return benchmark_difference
