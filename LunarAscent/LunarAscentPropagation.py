@@ -1,24 +1,5 @@
-# QUESTIONS
-# Why suddenly more error when time step 0.5 and 1.0 s
-#                            and also at 0.1 and 0.2   ==> probably because lagrange interpolator at end position is wack
-# when error based on /2, it is straight line. When *2 it is jagged. Why?    ==> probably because lagrange interpolator at end position is wack
-
-# what to plot for Q1b? Because 3d orbit makes no sense
-
-# is there a line limit for rest of Q1?
-
-# is there a handy overview of which coefficient sets go together with which fixed_step_size/variable_step_size/bulirsch_stoer_type/...
-
-# is 0.1m benchmark sufficient
-
-# NOTE: not start at pos=0 because it would be singularity in spherical elements
-
-# what is fixed-order integrator?
-
-# how to remove edges of the interpolator
-
 """
-Copyright (c) 2010-2022, Delft University of Technology
+Copyright (c) 2010-2021, Delft University of Technology
 All rights reserved
 
 This file is part of the Tudat. Redistribution and use in source and
@@ -33,13 +14,14 @@ First name: ***COMPLETE HERE***
 Last name: ***COMPLETE HERE***
 Student number: ***COMPLETE HERE***
 
-This module computes the dynamics of a Lunar ascent vehicle, according to a simple thrust guidance law.  This file propagates the dynamics
-using a variety of integrator and propagator settings. For each run, the differences w.r.t. a benchmark propagation are
-computed, providing a proxy for setting quality. The benchmark settings are currently defined semi-randomly, and are to be
-analyzed/modified.
+This module is the main script that executes the propagation and optimization. It relies on two other modules, defined
+for a more practical organization of functions and classes, which are imported below.
 
-The propagtion starts with a small velocity close to the surface of the Moon, and an initial flight path angle of 90
-degrees. Making (small) adjustments to this initial state is permitted if properly argued in the report.
+This function computes the dynamics of a lunar ascent vehicle, starting at zero velocity on the Moon's surface, using a
+variety of integrator and propagator settings (see comments under "RUN SIMULATION FOR VARIOUS SETTINGS").
+For each run, the differences w.r.t. a  benchmark propagation are computed, providing a proxy for setting quality.
+ 
+The propagation starts near the lunar surface, with a speed relative to the Moon of 10 m/s.
 
 The propagation is terminated as soon as one of the following conditions is met:
 
@@ -48,20 +30,23 @@ The propagation is terminated as soon as one of the following conditions is met:
 - Propagation time > 3600 s
 - Vehicle mass < 2250 kg
 
-This propagation assumes only point mass gravity by the Moon and thrust acceleration of the vehicle. Both the
-translational dynamics and mass of the vehicle are propagated, using a fixed specific impulse.
+This propagation assumes only point mass gravity by the Moon and thrust acceleration of the vehicle
+(see block 'CREATE ACCELERATIONS'). Both the translational dynamics and mass of the vehicle are propagated,
+using a fixed specific impulse.
 
-The thrust is computed based on a constant thrust magnitude, and a variable thrust direction. The trust direction is defined
+The thrust is computed based on a fixed thrust magnitude, and a variable thrust direction. The trust direction is defined
 on a set of 5 nodes, spread evenly in time. At each node, a thrust angle theta is defined, which gives the angle between
-the -z and y angles in the ascent vehicle's vertical frame (see Mooij, 1994, "The motion of a vehicle in a planetary
-atmosphere" ). Between the nodes, the thrust is linearly interpolated. If the propagation goes beyond the bounds of
-the nodes, the boundary value is used. The thrust profile is parameterized by the values of the vector thrust_parameters.
-The thrust guidance is implemented in the LunarAscentThrustGuidance class in the LunarAscentUtilities.py file.
+the -z and y angles in the ascent vehicle's vertical frame (see Mooij, 1994). Between the nodes, the thrust is linearly
+interpolated. If the propagation goes beyond the bounds of the nodes, the boundary value is used. The thrust profile
+is parameterized by the values of the vector thrustParameters
 
-The entries of the vector 'thrust_parameters' contains the following:
+The entries of the vector 'thrustParameters' contains the following:
 - Entry 0: Constant thrust magnitude
 - Entry 1: Constant spacing in time between nodes
 - Entry 2-6: Thrust angle theta, at nodes 1-5 (in order)
+
+The benchmark is run if the variable use_benchmark is True.
+The output is written if the variable write_results_to_file is true.
 
 Details on the outputs written by this file can be found:
 - benchmark data: comments for 'generateBenchmarks' function
@@ -124,6 +109,9 @@ In such cases, the selected integrator settings are unsuitable for the problem y
 # IMPORT STATEMENTS #######################################################
 ###########################################################################
 
+import sys
+sys.path.insert(0, '/home/dominic/Software/tudat-bundle/build-tudat-bundle-Desktop-Default/tudatpy/')
+
 # General imports
 import numpy as np
 import os
@@ -144,19 +132,22 @@ import LunarAscentUtilities as Util
 # DEFINE GLOBAL SETTINGS ##################################################
 ###########################################################################
 
-
 # Load spice kernels
 spice_interface.load_standard_kernels()
-# NOTE TO STUDENTS: INPUT YOUR PARAMETER SET HERE, FROM THE INPUT FILES
-# ON BRIGHTSPACE, FOR YOUR SPECIFIC STUDENT NUMBER
-
-thrust_parameters = [17869.1842977423, 21.5312002995, 0.0895461222, -0.3786714207, 0.4978693228, -0.2725262092, -1.132938021]
-
+# Define problem independent variables
+thrust_parameters = [15629.13262285292,
+                     21.50263026822358,
+                     -0.03344538412056863,
+                     -0.06456210720352829,
+                     0.3943447499535977,
+                     0.5358478897251189,
+                     -0.8607350478880107]
 # Choose whether benchmark is run
 use_benchmark = True
 run_integrator_analysis = True
 
-
+# Choose whether output of the propagation is written to files
+write_results_to_file = True
 # Get path of current directory
 current_dir = os.path.dirname(__file__)
 
@@ -185,6 +176,9 @@ global_frame_origin = 'Moon'
 global_frame_orientation = 'ECLIPJ2000'
 
 # Create body settings
+# N.B.: all the bodies added after this function is called will automatically
+# be placed in the same reference frame, which is the same for the full
+# system of bodies
 body_settings = environment_setup.get_default_body_settings(
     bodies_to_create,
     global_frame_origin,
@@ -197,14 +191,6 @@ bodies.create_empty_body('Vehicle')
 # Set mass of vehicle
 bodies.get_body('Vehicle').mass = vehicle_mass
 
-# Create thrust model, with dummy settings, to be overridden when processing the thrust parameters
-thrust_magnitude_settings = (
-    propagation_setup.thrust.constant_thrust_magnitude( thrust_magnitude=0.0, specific_impulse=constant_specific_impulse ) )
-environment_setup.add_engine_model(
-    'Vehicle', 'MainEngine', thrust_magnitude_settings, bodies )
-environment_setup.add_rotation_model(
-    bodies, 'Vehicle', environment_setup.rotation_model.custom_inertial_direction_based(
-        lambda time : np.array([1,0,0] ), global_frame_orientation, 'VehicleFixed' ) )
 ###########################################################################
 # CREATE PROPAGATOR SETTINGS ##############################################
 ###########################################################################
@@ -216,6 +202,8 @@ termination_settings = Util.get_termination_settings(simulation_start_epoch,
                                                      vehicle_dry_mass)
 # Retrieve dependent variables to save
 dependent_variables_to_save = Util.get_dependent_variable_save_settings()
+# Check whether there is any
+are_dependent_variables_to_save = False if not dependent_variables_to_save else True
 
 ###########################################################################
 # IF DESIRED, GENERATE BENCHMARK ##########################################
@@ -223,118 +211,72 @@ dependent_variables_to_save = Util.get_dependent_variable_save_settings()
 
 if use_benchmark:
 
-    time_step = 0.05
-
-    first_benchmark_dependent_variable_history = {}
-    with open("SimulationOutput/benchmarks/benchmark_1_dependent_variables.dat") as f:
-        for line in f:
-            (key, val1, val2, val3) = line.split()
-            first_benchmark_dependent_variable_history[float(key)] = [float(val1), float(val2), float(val3)]
-
-    first_benchmark_state_history = {}
-    with open("SimulationOutput/benchmarks/benchmark_1_states.dat") as f:
-        for line in f:
-            (key, val1, val2, val3, val4, val5, val6, val7) = line.split()
-            first_benchmark_state_history[float(key)] = [float(val1), float(val2), float(val3), float(val4), float(val5), float(val6), float(val7)]
-
     # Define benchmark interpolator settings to make a comparison between the two benchmarks
     benchmark_interpolator_settings = interpolators.lagrange_interpolation(
         8,boundary_interpolation = interpolators.extrapolate_at_boundary)
 
-    # make interpolators
+    # Create propagator settings for benchmark (Cowell)
+    propagator_settings = Util.get_propagator_settings(
+        thrust_parameters,
+        bodies,
+        simulation_start_epoch,
+        constant_specific_impulse,
+        vehicle_mass,
+        termination_settings,
+        dependent_variables_to_save)
+
+    benchmark_output_path = current_dir + '/SimulationOutput/benchmarks/' if write_results_to_file else None
+
+    # Generate benchmarks
+    benchmark_step_size = 1.0
+    benchmark_list = Util.generate_benchmarks(benchmark_step_size,
+                                              simulation_start_epoch,
+                                              bodies,
+                                              propagator_settings,
+                                              are_dependent_variables_to_save,
+                                              benchmark_output_path)
+
+    # Extract benchmark states
+    first_benchmark_state_history = benchmark_list[0]
+    second_benchmark_state_history = benchmark_list[1]
+
+    # Create state interpolator for first benchmark
     benchmark_state_interpolator = interpolators.create_one_dimensional_vector_interpolator(
-        first_benchmark_state_history, benchmark_interpolator_settings)
-    benchmark_dependent_variable_interpolator = interpolators.create_one_dimensional_vector_interpolator(
-        first_benchmark_dependent_variable_history, benchmark_interpolator_settings)
+        first_benchmark_state_history,
+        benchmark_interpolator_settings)
 
+    # Compare benchmark states, returning interpolator of the first benchmark, and writing difference to file if
+    # write_results_to_file is set to True
+    benchmark_state_difference = Util.compare_benchmarks(first_benchmark_state_history,
+                                                         second_benchmark_state_history,
+                                                         benchmark_output_path,
+                                                         'benchmarks_state_difference.dat')
 
-    benchmark_keys = list(first_benchmark_state_history.keys())
-    valid_interpolation_epochs = benchmark_keys[4:-4]
-    valid_interpolation_range = [valid_interpolation_epochs[0], valid_interpolation_epochs[-1]]
+    # Extract benchmark dependent variables, if present
+    if are_dependent_variables_to_save:
+        first_benchmark_dependent_variable_history = benchmark_list[2]
+        second_benchmark_dependent_variable_history = benchmark_list[3]
 
+        # Create dependent variable interpolator for first benchmark
+        benchmark_dependent_variable_interpolator = interpolators.create_one_dimensional_vector_interpolator(
+            first_benchmark_dependent_variable_history,
+            benchmark_interpolator_settings)
 
-
-    #### IF GENERATING NEW BENCHMARKS ######
-
-    # benchmark_output_path = current_dir + '/SimulationOutput/benchmarks/'
-    #
-    # # Create propagator settings for benchmark (Cowell)
-    # propagator_settings = Util.get_propagator_settings(
-    #     thrust_parameters,
-    #     bodies,
-    #     simulation_start_epoch,
-    #     vehicle_mass,
-    #     termination_settings,
-    #     dependent_variables_to_save)
-    #
-    # # for time_step in np.logspace(-6, 6, base=2, num=49):
-    # for time_step in [0.05]:
-    #     print()
-    #     print('TIME STEP = ', time_step)
-    #     print()
-    #
-    #     benchmark_step_size = time_step
-    #     benchmark_list = Util.generate_benchmarks(benchmark_step_size,
-    #                                               bodies,
-    #                                               propagator_settings,
-    #                                               True,
-    #                                               benchmark_output_path)
-    #
-    #     # Extract benchmark states
-    #     first_benchmark_state_history = benchmark_list[0]
-    #     second_benchmark_state_history = benchmark_list[1]
-    #
-    #     # Create state interpolator for first benchmark
-    #     benchmark_state_interpolator = interpolators.create_one_dimensional_vector_interpolator(
-    #         first_benchmark_state_history,
-    #         benchmark_interpolator_settings)
-    #
-    #
-    #
-    #     #####################
-    #
-    #     benchmark_keys = list(first_benchmark_state_history.keys())
-    #     valid_interpolation_epochs = benchmark_keys[5:-5]
-    #     valid_interpolation_range = [valid_interpolation_epochs[0], valid_interpolation_epochs[-1]]
-    #
-    #     # keys = list(benchmark_state_interpolator.keys())
-    #     # keys_to_pop = keys[:4] + keys[-4:]
-    #     # for key_to_pop in keys_to_pop:
-    #     #     # first_benchmark_state_history.pop()
-    #     #     del benchmark_state_interpolator[key_to_pop]
-    #
-    #     # Compare benchmark states, returning interpolator of the first benchmark, and writing difference to file
-    #     benchmark_state_difference = Util.compare_benchmarks(first_benchmark_state_history,
-    #                                                          second_benchmark_state_history,
-    #                                                          benchmark_output_path,
-    #                                                          'benchmarks_state_difference_'+str(time_step)+'.dat')
-    #
-    #     # Extract benchmark dependent variables, if present
-    #     if are_dependent_variables_to_save:
-    #         first_benchmark_dependent_variable_history = benchmark_list[2]
-    #         second_benchmark_dependent_variable_history = benchmark_list[3]
-    #
-    #         # Create dependent variable interpolator for first benchmark
-    #         benchmark_dependent_variable_interpolator = interpolators.create_one_dimensional_vector_interpolator(
-    #             first_benchmark_dependent_variable_history,
-    #             benchmark_interpolator_settings)
-    #
-    #         # Compare benchmark dependent variables, returning interpolator of the first benchmark, and writing difference
-    #         benchmark_dependent_difference = Util.compare_benchmarks(first_benchmark_dependent_variable_history,
-    #                                                                  second_benchmark_dependent_variable_history,
-    #                                                                  benchmark_output_path,
-    #                                                                  'benchmarks_dependent_variable_difference.dat')
-    #
-    #     Util.plot_compared_benchmarks('/SimulationOutput/benchmarks/benchmarks_state_difference.dat')
+        # Compare benchmark dependent variables, returning interpolator of the first benchmark, and writing difference
+        # to file if write_results_to_file is set to True
+        benchmark_dependent_difference = Util.compare_benchmarks(first_benchmark_dependent_variable_history,
+                                                                 second_benchmark_dependent_variable_history,
+                                                                 benchmark_output_path,
+                                                                 'benchmarks_dependent_variable_difference.dat')
 
 ###########################################################################
 # RUN SIMULATION FOR VARIOUS SETTINGS #####################################
 ###########################################################################
 """
-Code below propagates states using each propagator (propagator_index=0..6), four multi-stage variable step-size
+Code below propagates states using each propagator (propagator_index=0..6), four multi-stage variable step-size 
 integrators (integrator_index j=0..3) and an RK4 integrator (j=4). For the variable-step integrators, 4 different
 tolerances are used (step_size_index=0..3). For the RK4, 6 different step sizes are used (step_size_index=0..5),
-see use of n_time_step_settings variable. See get_integrator_settings function for more details.
+see use of number_of_integrator_step_size_settings variable. See get_integrator_settings function for more details.
 
 For each combination of i, j, and k, results are written to directory:
     LunarAscent/SimulationOutput/prop_i/int_j/setting_k/
@@ -351,60 +293,63 @@ NOTE TO STUDENTS: THE NUMBER, TYPES, SETTINGS OF PROPAGATORS/INTEGRATORS/INTEGRA
 MODIFIED FOR ASSIGNMENT 1.
 """
 if run_integrator_analysis:
+    # Define list of propagators
+    available_propagators = [propagation_setup.propagator.cowell,
+                             propagation_setup.propagator.encke,
+                             propagation_setup.propagator.gauss_keplerian,
+                             propagation_setup.propagator.gauss_modified_equinoctial,
+                             propagation_setup.propagator.unified_state_model_quaternions,
+                             propagation_setup.propagator.unified_state_model_modified_rodrigues_parameters,
+                             propagation_setup.propagator.unified_state_model_exponential_map]
 
-    n_propagators = 7
-    n_integrators = 15
-    n_step_sizes = 5
+    # Define settings to loop over
+    number_of_propagators = len(available_propagators)
+    number_of_integrators = 5
 
     # Loop over propagators
-    for propagator_index in range(n_propagators):
+    for propagator_index in range(number_of_propagators):
         # Get current propagator, and define translational state propagation settings
-        current_propagator = Util.get_propagator(propagator_index)
+        current_propagator = available_propagators[propagator_index]
 
         # Define propagation settings
         current_propagator_settings = Util.get_propagator_settings(
             thrust_parameters,
             bodies,
             simulation_start_epoch,
+            constant_specific_impulse,
             vehicle_mass,
             termination_settings,
             dependent_variables_to_save,
             current_propagator)
 
-        if propagator_index == 0:
-            # integrator_indexes = range(n_integrators)
-            integrator_indexes = [1]
-            # integrator_indexes = [12, 13, 14]
-        else:
-            integrator_indexes = [1] # the best one
-
-        for integrator_index in integrator_indexes:
+        # Loop over different integrators
+        for integrator_index in range(number_of_integrators):
+            # For RK4, more step sizes are used. NOTE TO STUDENTS, MODIFY THESE AS YOU SEE FIT!
+            if integrator_index > 3:
+                number_of_integrator_step_size_settings = 6
+            else:
+                number_of_integrator_step_size_settings = 4
 
             # Loop over all tolerances / step sizes
-            for step_size_index in range(n_step_sizes):
-                print('Current run: \n propagator_index = ' + str(propagator_index) + '\n integrator_index = ' + str(integrator_index) + '\n step_size_index = ' + str(step_size_index))
-
+            for step_size_index in range(number_of_integrator_step_size_settings):
+                # Print status
+                to_print = 'Current run: \n propagator_index = ' + str(propagator_index) + \
+                           '\n integrator_index = ' + str(integrator_index) \
+                           + '\n step_size_index = ' + str(step_size_index)
+                print(to_print)
                 # Set output path
-                output_path = current_dir + '/SimulationOutput/prop_' + str(propagator_index) + '/int_' + str(integrator_index) + '/step_size_' + str(step_size_index) + '/'
-
+                output_path = current_dir + '/SimulationOutput/prop_' + str(propagator_index) + \
+                              '/int_' + str(integrator_index) + '/step_size_' + str(step_size_index) + '/'
                 # Create integrator settings
-                current_integrator_settings = Util.get_integrator_settings(
-                    propagator_index,
-                    integrator_index,
-                    step_size_index,
-                    simulation_start_epoch)
-
-                # further define propagator
-                current_propagator_settings.integrator_settings = current_integrator_settings
-
+                current_integrator_settings = Util.get_integrator_settings(propagator_index,
+                                                                           integrator_index,
+                                                                           step_size_index,
+                                                                           simulation_start_epoch)
                 # Create Lunar Ascent Problem object
-                dynamics_simulator = numerical_simulation.create_dynamics_simulator(bodies, current_propagator_settings )
+                dynamics_simulator = numerical_simulation.SingleArcSimulator(
+                    bodies, current_integrator_settings, current_propagator_settings, print_dependent_variable_data=False )
 
-
-                ###########################################################################
-                # OUTPUT OF SIMULATIOIN #####################################
-                ###########################################################################
-
+                ### OUTPUT OF THE SIMULATION ###
                 # Retrieve propagated state and dependent variables
                 state_history = dynamics_simulator.state_history
                 unprocessed_state_history = dynamics_simulator.unprocessed_state_history
@@ -412,64 +357,54 @@ if run_integrator_analysis:
 
                 # Get the number of function evaluations (for comparison of different integrators)
                 function_evaluation_dict = dynamics_simulator.cumulative_number_of_function_evaluations
-                n_function_evaluations = list(function_evaluation_dict.values())[-1]
+                number_of_function_evaluations = list(function_evaluation_dict.values())[-1]
                 # Add it to a dictionary
-                dict_to_write = {'Number of function evaluations': n_function_evaluations}
+                dict_to_write = {'Number of function evaluations (ignore the line above)': number_of_function_evaluations}
                 # Check if the propagation was run successfully
                 propagation_outcome = dynamics_simulator.integration_completed_successfully
                 dict_to_write['Propagation run successfully'] = propagation_outcome
                 # Note if results were written to files
-                dict_to_write['Results written to file'] = True
+                dict_to_write['Results written to file'] = write_results_to_file
                 # Note if benchmark was run
                 dict_to_write['Benchmark run'] = use_benchmark
                 # Note if dependent variables were present
-                dict_to_write['Dependent variables present'] = True
+                dict_to_write['Dependent variables present'] = are_dependent_variables_to_save
 
                 # Save results to a file
-                save2txt(state_history, 'state_history.dat', output_path)
-                save2txt(unprocessed_state_history, 'unprocessed_state_history.dat', output_path)
-                save2txt(dependent_variable_history, 'dependent_variable_history.dat', output_path)
-                save2txt(dict_to_write, 'ancillary_simulation_info.txt',   output_path)
+                if write_results_to_file:
+                    save2txt(state_history, 'state_history.dat', output_path)
+                    save2txt(unprocessed_state_history, 'unprocessed_state_history.dat', output_path)
+                    save2txt(dependent_variable_history, 'dependent_variable_history.dat', output_path)
+                    save2txt(dict_to_write, 'ancillary_simulation_info.txt',   output_path)
 
                 ### BENCHMARK COMPARISON ####
                 # Compare the simulation to the benchmarks and write differences to files
                 if use_benchmark:
                     # Initialize containers
                     state_difference = dict()
-                    # state_difference[0] = 0
-
                     # Loop over the propagated states and use the benchmark interpolators
                     # NOTE TO STUDENTS: it can happen that the benchmark ends earlier than the regular simulation, due to
                     # the shorter step size. Therefore, the following lines of code will be forced to extrapolate the
                     # benchmark states (or dependent variables), producing a warning. Be aware of it!
-
-                    # state_interpolator_settings = interpolators.lagrange_interpolation(
-                    #     2, boundary_interpolation=interpolators.extrapolate_at_boundary)
-                    #
-                    # state_interpolator = interpolators.create_one_dimensional_vector_interpolator(
-                    #     state_history,
-                    #     state_interpolator_settings)
-
                     for epoch in state_history.keys():
-                        # print(epoch, ':::', type(epoch))
-                        if epoch >= valid_interpolation_range[0] and epoch <= valid_interpolation_range[-1]:
-                            state_difference[epoch] = state_history[epoch] - benchmark_state_interpolator.interpolate(epoch)
-
-
+                        state_difference[epoch] = state_history[epoch] - \
+                                                  benchmark_state_interpolator.interpolate(epoch)
                     # Write differences with respect to the benchmarks to files
-                    Util.write_with_exception(state_difference, file_name='state_difference_wrt_benchmark.dat', output_path=output_path)
-
-                    # Do the same for dependent variables
-                    dependent_difference = dict()
-                    # Loop over the propagated dependent variables and use the benchmark interpolators
-                    for epoch in dependent_variable_history.keys():
-                        dependent_difference[epoch] = dependent_variable_history[epoch] - benchmark_dependent_variable_interpolator.interpolate(epoch)
-
-                    # Write differences with respect to the benchmarks to files
-                    Util.write_with_exception(dependent_difference, file_name='dependent_variable_difference_wrt_benchmark.dat',output_path=output_path)
-
-
-
+                    if write_results_to_file:
+                        save2txt(state_difference, 'state_difference_wrt_benchmark.dat', output_path)
+                    # Do the same for dependent variables, if present
+                    if are_dependent_variables_to_save:
+                        # Initialize containers
+                        dependent_difference = dict()
+                        # Loop over the propagated dependent variables and use the benchmark interpolators
+                        for epoch in dependent_variable_history.keys():
+                            dependent_difference[epoch] = dependent_variable_history[epoch] - \
+                                                          benchmark_dependent_variable_interpolator.interpolate(epoch)
+                        # Write differences with respect to the benchmarks to files
+                        if write_results_to_file:
+                            save2txt(dependent_difference,
+                                     'dependent_variable_difference_wrt_benchmark.dat',
+                                     output_path)
     # Print the ancillary information
     print('\n### ANCILLARY SIMULATION INFORMATION ###')
     for (elem, (info, result)) in enumerate(dict_to_write.items()):
