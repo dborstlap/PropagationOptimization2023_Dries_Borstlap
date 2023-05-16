@@ -37,6 +37,8 @@ from tudatpy.kernel.numerical_simulation import environment
 from tudatpy.kernel import numerical_simulation
 from tudatpy.kernel.astro import element_conversion
 from tudatpy.kernel.math import interpolators
+import matplotlib.pyplot as plt
+import os
 
 ###########################################################################
 # PROPAGATION SETTING UTILITIES ###########################################
@@ -171,84 +173,308 @@ def get_dependent_variable_save_settings() -> list:
     dependent_variables_to_save : list[tudatpy.kernel.numerical_simulation.propagation_setup.dependent_variable]
         List of dependent variables to save.
     """
+
+    ## CANNNOT BE EMPTY ####
     dependent_variables_to_save = [propagation_setup.dependent_variable.altitude('Vehicle', 'Moon'),
                                    propagation_setup.dependent_variable.relative_speed('Vehicle', 'Moon'),
                                    propagation_setup.dependent_variable.flight_path_angle('Vehicle', 'Moon')]
     return dependent_variables_to_save
 
 # NOTE TO STUDENTS: THIS FUNCTION SHOULD BE EXTENDED TO USE MORE INTEGRATORS FOR ASSIGNMENT 1.
+# def get_integrator_settings(propagator_index: int,
+#                             integrator_index: int,
+#                             settings_index: int,
+#                             simulation_start_epoch: float) \
+#         -> tudatpy.kernel.numerical_simulation.propagation_setup.integrator.IntegratorSettings:
+#
+#     """
+#
+#     Retrieves the integrator settings.
+#
+#     It selects a combination of integrator to be used (first argument) and
+#     the related setting (tolerance for variable step size integrators
+#     or step size for fixed step size integrators). The code, as provided, runs the following:
+#     - if j=0,1,2,3: a variable-step-size, multi-stage integrator is used (see multiStageTypes list for specific type),
+#                      with tolerances 10^(-10+*k)
+#     - if j=4      : a fixed-step-size RK4 integrator is used, with step-size 2^(k)
+#
+#     Parameters
+#     ----------
+#     propagator_index : int
+#         Index that selects the propagator type (currently not used).
+#         NOTE TO STUDENTS: this argument can be used to select specific combinations of propagator and integrators
+#         (provided that the code is expanded).
+#     integrator_index : int
+#         Index that selects the integrator type as follows:
+#             0 -> RK4(5)
+#             1 -> RK5(6)
+#             2 -> RK7(8)
+#             3 -> RKDP7(8)
+#             4 -> RK4
+#     settings_index : int
+#         Index that selects the tolerance or the step size
+#         (depending on the integrator type).
+#     simulation_start_epoch : float
+#         Start of the simulation [s] with t=0 at J2000.
+#
+#     Returns
+#     -------
+#     integrator_settings : tudatpy.kernel.numerical_simulation.propagation_setup.integrator.IntegratorSettings
+#         Integrator settings to be provided to the dynamics simulator.
+#     """
+#
+#     # Define list of multi-stage integrators
+#     multi_stage_integrators = [propagation_setup.integrator.CoefficientSets.rkf_45,
+#                                propagation_setup.integrator.CoefficientSets.rkf_56,
+#                                propagation_setup.integrator.CoefficientSets.rkf_78,
+#                                propagation_setup.integrator.CoefficientSets.rkdp_87]
+#
+#
+#     # Use variable step-size integrator
+#     if integrator_index < 4:
+#         # Select variable-step integrator
+#         current_coefficient_set = multi_stage_integrators[integrator_index]
+#         # Compute current tolerance
+#         current_tolerance = 10.0 ** (-10.0 + settings_index)
+#         # Create integrator settings
+#         integrator = propagation_setup.integrator
+#         # Here (epsilon, inf) are set as respectively min and max step sizes
+#         # also note that the relative and absolute tolerances are the same value
+#         integrator_settings = integrator.runge_kutta_variable_step_size(
+#             1.0, # initial time step
+#             current_coefficient_set,
+#             1.0E-4, # minimum time step
+#             np.inf, # maximum time step
+#             current_tolerance,
+#             current_tolerance )
+#     # Use fixed step-size integrator
+#     else:
+#         # Compute time step
+#         fixed_step_size = 2 ** settings_index
+#         # Create integrator settings
+#         integrator = propagation_setup.integrator
+#         integrator_settings = integrator.runge_kutta_fixed_step_size(
+#             fixed_step_size, propagation_setup.integrator.CoefficientSets.rk_4)
+#     return integrator_settings
+
+
+
+# NOTE TO STUDENTS: THIS FUNCTION SHOULD BE EXTENDED TO USE MORE INTEGRATORS FOR ASSIGNMENT 1.
 def get_integrator_settings(propagator_index: int,
                             integrator_index: int,
-                            settings_index: int,
-                            simulation_start_epoch: float) \
-        -> tudatpy.kernel.numerical_simulation.propagation_setup.integrator.IntegratorSettings:
-    """
+                            step_size_index: int,
+                            simulation_start_epoch: float):
 
-    Retrieves the integrator settings.
+    ###############################################
+    # Fixed-step multi-stage methods
+    ###############################################
+    int_1 = [
+        # propagation_setup.integrator.CoefficientSets.euler_forward,  # not good
+        # propagation_setup.integrator.CoefficientSets.rk_4,           # yes
+        propagation_setup.integrator.CoefficientSets.rkf_12,           # not good
+        # propagation_setup.integrator.CoefficientSets.rkf_45,         # yes
+        propagation_setup.integrator.CoefficientSets.rkf_56,           # yes yes
+        # propagation_setup.integrator.CoefficientSets.rkf_78,         # yes
+        # propagation_setup.integrator.CoefficientSets.rkdp_87,        # yes
+        propagation_setup.integrator.CoefficientSets.rkf_1210          # yes
+    ]
+    step_1 = [
+        # 2 ** (-7 + step_size_index),
+        2 ** (-7 + step_size_index),
+        2 ** (-1 + step_size_index),
+        # 2 ** (-4 + step_size_index),
+        # 2 ** (-3 + step_size_index),
+        2 ** (0 + step_size_index),
+        # 2 ** (-3 + step_size_index),
+        # 2 ** (2 + step_size_index)
+    ]
+    if integrator_index <= 2: # 0-2
+        current_coefficient_set = int_1[integrator_index]
+        fixed_step_size = step_1[integrator_index]
+        integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step_size(fixed_step_size, current_coefficient_set)
 
-    It selects a combination of integrator to be used (first argument) and
-    the related setting (tolerance for variable step size integrators
-    or step size for fixed step size integrators). The code, as provided, runs the following:
-    - if j=0,1,2,3: a variable-step-size, multi-stage integrator is used (see multiStageTypes list for specific type),
-                     with tolerances 10^(-10+*k)
-    - if j=4      : a fixed-step-size RK4 integrator is used, with step-size 2^(k)
+    ###############################################
+    # Variable-step multi-stage methods
+    ###############################################
+    int_2 = [
+        propagation_setup.integrator.CoefficientSets.rkf_12,         # no
+        # propagation_setup.integrator.CoefficientSets.rkf_45,         # yes yes
+        propagation_setup.integrator.CoefficientSets.rkf_56,         # yes
+        # propagation_setup.integrator.CoefficientSets.rkf_78,         # yes
+        # propagation_setup.integrator.CoefficientSets.rkdp_87,        # yes yes
+        propagation_setup.integrator.CoefficientSets.rkf_1210        # 13 20
+    ]
+    step_2 = [
+        10.0 ** (-12.0 + step_size_index),
+        # 10.0 ** (-12.0 + step_size_index),
+        10.0 ** (-12.0 + step_size_index),
+        # 10.0 ** (-15.0 + step_size_index),
+        # 10.0 ** (-10.0 + step_size_index),
+        10.0 ** (-16.0 + step_size_index)
+    ]
+    if 3 <= integrator_index and integrator_index <= 5: # 3-5
+        int_num = integrator_index-3
 
-    Parameters
-    ----------
-    propagator_index : int
-        Index that selects the propagator type (currently not used).
-        NOTE TO STUDENTS: this argument can be used to select specific combinations of propagator and integrators
-        (provided that the code is expanded).
-    integrator_index : int
-        Index that selects the integrator type as follows:
-            0 -> RK4(5)
-            1 -> RK5(6)
-            2 -> RK7(8)
-            3 -> RKDP7(8)
-            4 -> RK4
-    settings_index : int
-        Index that selects the tolerance or the step size
-        (depending on the integrator type).
-    simulation_start_epoch : float
-        Start of the simulation [s] with t=0 at J2000.
-
-    Returns
-    -------
-    integrator_settings : tudatpy.kernel.numerical_simulation.propagation_setup.integrator.IntegratorSettings
-        Integrator settings to be provided to the dynamics simulator.
-
-    """
-    # Define list of multi-stage integrators
-    multi_stage_integrators = [propagation_setup.integrator.CoefficientSets.rkf_45,
-                               propagation_setup.integrator.CoefficientSets.rkf_56,
-                               propagation_setup.integrator.CoefficientSets.rkf_78,
-                               propagation_setup.integrator.CoefficientSets.rkdp_87]
-    # Use variable step-size integrator
-    if integrator_index < 4:
-        # Select variable-step integrator
-        current_coefficient_set = multi_stage_integrators[integrator_index]
-        # Compute current tolerance
-        current_tolerance = 10.0 ** (-10.0 + settings_index)
-        # Create integrator settings
-        integrator = propagation_setup.integrator
-        # Here (epsilon, inf) are set as respectively min and max step sizes
-        # also note that the relative and absolute tolerances are the same value
-        integrator_settings = integrator.runge_kutta_variable_step_size(
-            1.0,
+        current_coefficient_set = int_2[int_num]
+        current_tolerance = step_2[int_num]
+        integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(
+            1.0, # initial time step
             current_coefficient_set,
-            1.0E-4,
-            np.inf,
+            1.0E-4, # minimum time step
+            np.inf, # maximum time step
             current_tolerance,
             current_tolerance )
-    # Use fixed step-size integrator
-    else:
-        # Compute time step
-        fixed_step_size = 2 ** settings_index
-        # Create integrator settings
-        integrator = propagation_setup.integrator
-        integrator_settings = integrator.runge_kutta_fixed_step_size(
-            fixed_step_size, propagation_setup.integrator.CoefficientSets.rk_4)
+
+    ###############################################
+    # Fixed-step, fixed-order multi-step
+    ###############################################
+    # int_3 = [
+    #     propagation_setup.integrator.CoefficientSets.rkf_12,           # yes
+    #     propagation_setup.integrator.CoefficientSets.rkf_56,           # yes yes
+    #     propagation_setup.integrator.CoefficientSets.rkf_1210,         # yes
+    # ]
+    # step_3 = [
+    #     2 ** (-4 + step_size_index),
+    #     2 ** (-1 + step_size_index),
+    #     2 ** (1 + step_size_index),
+    # ]
+    # if 6 <= integrator_index and integrator_index <= 8:
+    #     int_num = integrator_index - 6
+    #
+    #     current_coefficient_set = int_3[int_num]
+    #     fixed_step_size = step_3[int_num]
+    #     integrator_settings = propagation_setup.integrator.runge_kutta_fixed_step_size(
+    #         initial_time_step=fixed_step_size,
+    #         coefficient_set=current_coefficient_set,
+    #         order_to_use = propagation_setup.integrator.OrderToIntegrate.higher)
+
+    int_3 = [
+        2,
+        5,
+        8
+    ]
+
+    step_3 = [
+        10 ** (-8 + step_size_index),  # step size
+        10 ** (-6 + step_size_index),  # step size
+        10 ** (-6 + step_size_index),  # step size
+    ]
+
+
+    if 6 <= integrator_index and integrator_index <= 8:
+        int_num = integrator_index - 6
+        current_tolerance = step_3[int_num]
+        order = int_3[int_num]
+        integrator_settings = propagation_setup.integrator.adams_bashforth_moulton(
+            initial_time_step = 1.0,
+            minimum_step_size = 1E-4,
+            maximum_step_size = np.inf,
+            relative_error_tolerance = current_tolerance,
+            absolute_error_tolerance = current_tolerance,
+            minimum_order = order,
+            maximum_order = order,
+        )
+
+
+    ###############################################
+    # Fixed-step extrapolation methods
+    ###############################################
+    int_4 = [
+        propagation_setup.integrator.ExtrapolationMethodStepSequences.bulirsch_stoer_sequence,
+        propagation_setup.integrator.ExtrapolationMethodStepSequences.bulirsch_stoer_sequence,
+        propagation_setup.integrator.ExtrapolationMethodStepSequences.deufelhard_sequence
+    ]
+    step_4 = [
+        2 ** (2 + step_size_index), # step size
+        2 ** (2 + step_size_index), # step size
+        2 ** (-1 + step_size_index), # step size
+    ]
+    max_steps_4 = [
+        10,
+        5,
+        10
+    ]
+
+    if 9 <= integrator_index and integrator_index <= 11:
+        int_num = integrator_index - 9
+        current_coefficient_set = int_4[int_num]
+        fixed_step_size = step_4[int_num]
+        max_steps = max_steps_4[int_num]
+        integrator_settings = propagation_setup.integrator.bulirsch_stoer(
+            initial_time_step = fixed_step_size,
+            minimum_step_size = fixed_step_size,
+            maximum_step_size = fixed_step_size,
+            extrapolation_sequence = current_coefficient_set,
+            maximum_number_of_steps = max_steps,
+            relative_error_tolerance = 10E0,
+            absolute_error_tolerance = 10E0,
+        )
+    # if 11 == integrator_index:
+    #     int_num = integrator_index - 9
+    #     fixed_step_size = step_4[int_num]
+    #     integrator_settings = propagation_setup.integrator.adams_bashforth_moulton(
+    #         initial_time_step = fixed_step_size,
+    #         minimum_step_size = fixed_step_size,
+    #         maximum_step_size = fixed_step_size,
+    #         relative_error_tolerance = 10E0,
+    #         absolute_error_tolerance = 10E0,
+    #         bandwidth  = fixed_step_size*100
+    #     )
+
+
+    ###############################################
+    # Variable-step extrapolation methods
+    ###############################################
+    int_5 = [
+        propagation_setup.integrator.ExtrapolationMethodStepSequences.bulirsch_stoer_sequence,
+        propagation_setup.integrator.ExtrapolationMethodStepSequences.bulirsch_stoer_sequence,
+        propagation_setup.integrator.ExtrapolationMethodStepSequences.deufelhard_sequence
+    ]
+    step_5 = [
+        10 ** (-13 + step_size_index),  # step size
+        10 ** (-13 + step_size_index),  # step size
+        10 ** (-12 + step_size_index),  # step size
+    ]
+    max_steps_5 = [
+        10,
+        5,
+        10
+    ]
+
+    if 12 <= integrator_index and integrator_index <= 14:
+        int_num = integrator_index - 12
+        current_coefficient_set = int_5[int_num]
+        current_tolerance = step_5[int_num]
+        max_steps = max_steps_5[int_num]
+        integrator_settings = propagation_setup.integrator.bulirsch_stoer(
+            initial_time_step = 1.0,
+            minimum_step_size = 1E-4,
+            maximum_step_size = np.inf,
+            extrapolation_sequence = current_coefficient_set,
+            maximum_number_of_steps = max_steps,
+            relative_error_tolerance = current_tolerance,
+            absolute_error_tolerance = current_tolerance,
+        )
+
     return integrator_settings
+
+
+
+
+def get_propagator(propagator_index):
+    available_propagators = [propagation_setup.propagator.cowell,
+                             propagation_setup.propagator.encke,
+                             propagation_setup.propagator.gauss_keplerian,
+                             propagation_setup.propagator.gauss_modified_equinoctial,
+                             propagation_setup.propagator.unified_state_model_quaternions,
+                             propagation_setup.propagator.unified_state_model_modified_rodrigues_parameters,
+                             propagation_setup.propagator.unified_state_model_exponential_map]
+
+    propagator = available_propagators[propagator_index]
+
+    return propagator
+
+
 
 
 def get_propagator_settings(thrust_parameters,
@@ -559,7 +785,7 @@ def generate_benchmarks(benchmark_step_size: float,
     ### CREATION OF THE TWO BENCHMARKS ###
     # Define benchmarks' step sizes
     first_benchmark_step_size = benchmark_step_size  # s
-    second_benchmark_step_size = 2.0 * first_benchmark_step_size
+    second_benchmark_step_size = first_benchmark_step_size / 2
 
     # Create integrator settings for the first benchmark, using a fixed step size RKDP8(7) integrator
     # (the minimum and maximum step sizes are set equal, while both tolerances are set to inf)
@@ -642,16 +868,78 @@ def compare_benchmarks(first_benchmark: dict,
     """
     # Create 8th-order Lagrange interpolator for first benchmark
     benchmark_interpolator = interpolators.create_one_dimensional_vector_interpolator(
-        first_benchmark,  interpolators.lagrange_interpolation(8))
+        second_benchmark,  interpolators.lagrange_interpolation(8))
     # Calculate the difference between the benchmarks
     print('Calculating benchmark differences...')
     # Initialize difference dictionaries
     benchmark_difference = dict()
     # Calculate the difference between the states and dependent variables in an iterative manner
-    for second_epoch in second_benchmark.keys():
-        benchmark_difference[second_epoch] = benchmark_interpolator.interpolate(second_epoch) - second_benchmark[second_epoch]
+    for first_epoch in list(first_benchmark.keys())[4:-4]:
+        benchmark_difference[first_epoch] = abs(first_benchmark[first_epoch]-benchmark_interpolator.interpolate(first_epoch))
     # Write results to files
     if output_path is not None:
         save2txt(benchmark_difference, filename, output_path)
     # Return the interpolator
     return benchmark_difference
+
+
+def plot_compared_benchmarks(filename):
+    benchmark_difference = np.genfromtxt('SimulationOutput/benchmarks/benchmarks_state_difference.dat', delimiter='\t').reshape([-1,8])
+    benchmark_time = benchmark_difference[:, 0]
+    benchmark_difference_pos = benchmark_difference[:, 1:4]
+    benchmark_difference_vel = benchmark_difference[:, 4:7]
+    benchmark_difference_mass = benchmark_difference[:, 7]
+
+    # visual
+    plt.rcParams['font.size'] = 15
+    plt.figure(figsize=(10, 6))
+    # plot
+    plt.plot(benchmark_time, np.linalg.norm(benchmark_difference_pos, axis=1), label='benchmark_difference_pos')
+    plt.plot(benchmark_time, np.linalg.norm(benchmark_difference_vel, axis=1), label='benchmark_difference_vel')
+    # plt.plot(benchmark_time, benchmark_difference_mass, label='benchmark_difference_mass')
+    # titles
+    plt.title('benchmark difference')
+    plt.xlabel("time (s)")
+    plt.ylabel("Benchmark error (m)")
+    plt.yscale('log')
+    plt.legend()
+    # make
+    plt.tight_layout()
+    plt.savefig('figures/q1_benchmark_difference.png')
+    plt.show()
+    plt.close()
+
+
+
+
+
+def write_with_exception(data_to_save, file_name, output_path):
+    try:
+        save2txt(data_to_save, file_name, output_path)
+    except:
+        print('written empty file')
+        open(os.path.join(output_path, file_name), mode='w').close()
+
+
+
+
+def read_ancillary_info(filename):
+    dict = {}
+    with open(filename) as f:
+        for line in f:
+            words = line.split()
+            key = ' '.join(words[:-1])
+            val = words[-1]
+            dict[key] = val
+    return dict
+
+
+
+def read_data_file(filename, vector_length):
+    return np.genfromtxt(filename, delimiter='\t').reshape([-1, vector_length+1])
+
+
+
+
+
+
