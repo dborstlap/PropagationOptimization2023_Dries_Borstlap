@@ -132,13 +132,8 @@ import LunarAscentUtilities as Util
 spice_interface.load_standard_kernels()
 # NOTE TO STUDENTS: INPUT YOUR PARAMETER SET HERE, FROM THE INPUT FILES
 # ON BRIGHTSPACE, FOR YOUR SPECIFIC STUDENT NUMBER
-thrust_parameters = [15629.13262285292,
-                     21.50263026822358,
-                     -0.03344538412056863,
-                     -0.06456210720352829,
-                     0.3943447499535977,
-                     0.5358478897251189,
-                     -0.8607350478880107]
+thrust_parameters = [17869.1842977423, 21.5312002995, 0.0895461222, -0.3786714207, 0.4978693228, -0.2725262092, -1.132938021]
+
 # Choose whether benchmark is run
 use_benchmark = True
 run_integrator_analysis = True
@@ -167,7 +162,7 @@ termination_altitude = 100.0E3  # m
 ###########################################################################
 
 # Set number of models
-number_of_models = 5
+number_of_models = 16
 
 # Initialize dictionary to store the results of the simulation
 simulation_results = dict()
@@ -176,8 +171,10 @@ simulation_results = dict()
 output_interpolation_step = 1.0  # s
 
 for model_test in range(number_of_models):
+    print('model_test:', model_test)
+
     # Define settings for celestial bodies
-    bodies_to_create = ['Moon','Earth']
+    bodies_to_create = ['Moon','Earth', 'Sun', 'Venus', 'Mars', 'Jupiter']
     # Define coordinate system
     global_frame_origin = 'Moon'
     global_frame_orientation = 'ECLIPJ2000'
@@ -204,15 +201,19 @@ for model_test in range(number_of_models):
     # Set mass of vehicle
     bodies.get_body('Vehicle').mass = vehicle_mass
 
+    reference_area = 10
+    radiation_pressure_coefficient = 1.2
+    drag_coefficient = 1.2
+    occulting_bodies = ["Moon", "Earth"]
+    aero_coefficient_settings = environment_setup.aerodynamic_coefficients.constant(reference_area, [drag_coefficient, 0, 0])
+    radiation_pressure_settings = environment_setup.radiation_pressure.cannonball("Sun", reference_area, radiation_pressure_coefficient, occulting_bodies)
+
     # Create thrust model, with dummy settings, to be overridden when processing the thrust parameters
-    thrust_magnitude_settings = (
-        propagation_setup.thrust.constant_thrust_magnitude(thrust_magnitude=0.0,
-                                                           specific_impulse=constant_specific_impulse))
-    environment_setup.add_engine_model(
-        'Vehicle', 'MainEngine', thrust_magnitude_settings, bodies)
-    environment_setup.add_rotation_model(
-        bodies, 'Vehicle', environment_setup.rotation_model.custom_inertial_direction_based(
-            lambda time: np.array([1, 0, 0]), global_frame_orientation, 'VehcleFixed'))
+    thrust_magnitude_settings = (propagation_setup.thrust.constant_thrust_magnitude(thrust_magnitude=0.0,specific_impulse=constant_specific_impulse))
+    environment_setup.add_engine_model('Vehicle', 'MainEngine', thrust_magnitude_settings, bodies)
+    environment_setup.add_rotation_model(bodies, 'Vehicle', environment_setup.rotation_model.custom_inertial_direction_based(lambda time: np.array([1, 0, 0]), global_frame_orientation, 'VehcleFixed'))
+    environment_setup.add_aerodynamic_coefficient_interface(bodies, "Vehicle", aero_coefficient_settings)
+    environment_setup.add_radiation_pressure_interface(bodies, "Vehicle", radiation_pressure_settings)
 
     ###########################################################################
     # CREATE PROPAGATOR SETTINGS ##############################################
@@ -224,7 +225,7 @@ for model_test in range(number_of_models):
                                                          termination_altitude,
                                                          vehicle_dry_mass)
     # Retrieve dependent variables to save
-    dependent_variables_to_save = Util.get_dependent_variable_save_settings()
+    dependent_variables_to_save = Util.get_dependent_variable_save_settings(model_choice=model_test)
     # Check whether there is any
     are_dependent_variables_to_save = False if not dependent_variables_to_save else True
 
@@ -239,12 +240,10 @@ for model_test in range(number_of_models):
         model_choice = model_test )
 
     # Create integrator settings
-    propagator_settings.integrator_settings = Util.get_integrator_settings(
-        0, 0, 0, simulation_start_epoch)
+    propagator_settings.integrator_settings = Util.get_integrator_settings(0, 0, 0, simulation_start_epoch)
 
     # Create Lunar Ascent Problem object
-    dynamics_simulator = numerical_simulation.create_dynamics_simulator(
-        bodies, propagator_settings )
+    dynamics_simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
 
     ### OUTPUT OF THE SIMULATION ###
     # Retrieve propagated state and dependent variables

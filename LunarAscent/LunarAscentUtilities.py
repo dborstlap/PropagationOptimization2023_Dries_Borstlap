@@ -38,8 +38,7 @@ from tudatpy.kernel.math import interpolators
 # PROPAGATION SETTING UTILITIES ###########################################
 ###########################################################################
 
-def get_initial_state(simulation_start_epoch: float,
-                      bodies: tudatpy.kernel.numerical_simulation.environment.SystemOfBodies) -> np.ndarray:
+def get_initial_state(simulation_start_epoch: float, bodies: tudatpy.kernel.numerical_simulation.environment.SystemOfBodies) -> np.ndarray:
     """
     Converts the initial state to inertial coordinates.
 
@@ -149,7 +148,7 @@ def get_termination_settings(simulation_start_epoch: float,
 
 
 # NOTE TO STUDENTS: this function can be modified to save more/less dependent variables.
-def get_dependent_variable_save_settings() -> list:
+def get_dependent_variable_save_settings(model_choice) -> list:
     """
     Retrieves the dependent variables to save.
 
@@ -170,6 +169,103 @@ def get_dependent_variable_save_settings() -> list:
     dependent_variables_to_save = [propagation_setup.dependent_variable.altitude('Vehicle', 'Moon'),
                                    propagation_setup.dependent_variable.relative_speed('Vehicle', 'Moon'),
                                    propagation_setup.dependent_variable.flight_path_angle('Vehicle', 'Moon')]
+
+
+    # thrust
+    # propagation_setup.dependent_variable.single_acceleration_norm(propagation_setup.acceleration.thrust_acceleration_type, 'Vehicle', 'Vehicle'),
+
+    # if model_choice == 1: # moon spherical 1
+    #     dependent_variables_to_save = [
+    #         propagation_setup.dependent_variable.spherical_harmonic_terms_acceleration_norm(
+    #             "Vehicle", "Moon", [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)])
+    #     ]
+    #
+    # elif model_choice == 2: # earth spherical 1
+    #     dependent_variables_to_save = [
+    #         propagation_setup.dependent_variable.spherical_harmonic_terms_acceleration_norm(
+    #             "Vehicle", "Earth", [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)])
+    #     ]
+    #
+    # elif model_choice == 3: # planets and sun
+    #     dependent_variables_to_save = [
+    #         propagation_setup.dependent_variable.single_acceleration_norm(
+    #             propagation_setup.acceleration.point_mass_gravity_type, "Vehicle", "Moon"),
+    #         propagation_setup.dependent_variable.single_acceleration_norm(
+    #             propagation_setup.acceleration.point_mass_gravity_type, "Vehicle", "Earth"),
+    #         propagation_setup.dependent_variable.single_acceleration_norm(
+    #             propagation_setup.acceleration.point_mass_gravity_type, "Vehicle", "Venus"),
+    #         propagation_setup.dependent_variable.single_acceleration_norm(
+    #             propagation_setup.acceleration.point_mass_gravity_type, "Vehicle", "Mars"),
+    #         propagation_setup.dependent_variable.single_acceleration_norm(
+    #             propagation_setup.acceleration.point_mass_gravity_type, "Vehicle", "Jupiter"),
+    #         propagation_setup.dependent_variable.single_acceleration_norm(
+    #             propagation_setup.acceleration.point_mass_gravity_type, "Vehicle", "Sun"),
+    #     ]
+    #
+    # elif model_choice == 4:  # atmosphere wrt nominal (model 0)
+    #     dependent_variables_to_save = [
+    #         propagation_setup.dependent_variable.single_acceleration_norm(
+    #             propagation_setup.acceleration.aerodynamic_type, "Vehicle", "Moon"),
+    #     ]
+    #
+    # elif model_choice == 5:  # radiation pressure wrt nominal (model 0)
+    #     dependent_variables_to_save = [
+    #         propagation_setup.dependent_variable.single_acceleration_norm(
+    #             propagation_setup.acceleration.cannonball_radiation_pressure_type, "Vehicle", "Sun"),
+    #     ]
+
+        # if model_choice == 1:  # moon spherical 1
+        #     acceleration_settings_on_vehicle['Moon'] = [propagation_setup.acceleration.spherical_harmonic_gravity(1, 1)]
+        #
+        # if model_choice == 2:  # moon spherical 2
+        #     acceleration_settings_on_vehicle['Moon'] = [propagation_setup.acceleration.spherical_harmonic_gravity(2, 2)]
+        #
+        # if model_choice == 3:  # moon spherical 3
+        #     acceleration_settings_on_vehicle['Moon'] = [propagation_setup.acceleration.spherical_harmonic_gravity(10, 10)]
+        #
+        # if model_choice == 4:  # moon spherical all
+        #     acceleration_settings_on_vehicle['Moon'] = [propagation_setup.acceleration.spherical_harmonic_gravity(100, 100)]
+        #
+        # elif model_choice == 5:  # earth point
+        #     acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.point_mass_gravity()]
+        #
+        # elif model_choice == 6:  # earth spherical 1
+        #     acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.spherical_harmonic_gravity(1, 1)]
+        #
+        # elif model_choice == 7:  # earth spherical 2
+        #     acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.spherical_harmonic_gravity(2, 2)]
+        #
+        # elif model_choice == 8:  # earth spherical 3
+        #     acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.spherical_harmonic_gravity(10, 10)]
+        #
+        # elif model_choice == 9:  # earth spherical all
+        #     acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.spherical_harmonic_gravity(100, 100)]
+        #
+        # elif model_choice == 10:  # planets and sun
+        #     acceleration_settings_on_vehicle['Sun'] = [propagation_setup.acceleration.point_mass_gravity()]
+        #
+        # elif model_choice == 11:  # planets and sun
+        #     acceleration_settings_on_vehicle['Venus'] = [propagation_setup.acceleration.point_mass_gravity()]
+        #
+        # elif model_choice == 12:  # planets and sun
+        #     acceleration_settings_on_vehicle['Mars'] = [propagation_setup.acceleration.point_mass_gravity()]
+        #
+        # elif model_choice == 13:  # planets and sun
+        #     acceleration_settings_on_vehicle['Jupiter'] = [propagation_setup.acceleration.point_mass_gravity()]
+        #
+        # elif model_choice == 14:  # planets and sun
+        #     acceleration_settings_on_vehicle['Sun'] = [propagation_setup.acceleration.point_mass_gravity()]
+        #     acceleration_settings_on_vehicle['Venus'] = [propagation_setup.acceleration.point_mass_gravity()]
+        #     acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.point_mass_gravity()]
+        #     acceleration_settings_on_vehicle['Mars'] = [propagation_setup.acceleration.point_mass_gravity()]
+        #     acceleration_settings_on_vehicle['Jupiter'] = [propagation_setup.acceleration.point_mass_gravity()]
+        #
+        # elif model_choice == 15:  # atmosphere wrt nominal (model 0)
+        #     acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.aerodynamic()]
+        #
+        # elif model_choice == 16:  # radiation pressure wrt nominal (model 0)
+        #     acceleration_settings_on_vehicle['Sun'] = [propagation_setup.acceleration.cannonball_radiation_pressure()]
+
     return dependent_variables_to_save
 
 # NOTE TO STUDENTS: THIS FUNCTION SHOULD BE EXTENDED TO USE MORE INTEGRATORS FOR ASSIGNMENT 1.
@@ -178,72 +274,17 @@ def get_integrator_settings(propagator_index: int,
                             settings_index: int,
                             simulation_start_epoch: float) \
         -> tudatpy.kernel.numerical_simulation.propagation_setup.integrator.IntegratorSettings:
-    """
 
-    Retrieves the integrator settings.
+    tolerance = 10**(-12)
 
-    It selects a combination of integrator to be used (first argument) and
-    the related setting (tolerance for variable step size integrators
-    or step size for fixed step size integrators). The code, as provided, runs the following:
-    - if j=0,1,2,3: a variable-step-size, multi-stage integrator is used (see multiStageTypes list for specific type),
-                     with tolerances 10^(-10+*k)
-    - if j=4      : a fixed-step-size RK4 integrator is used, with step-size 2^(k)
+    integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(
+        1.0,  # initial time step
+        propagation_setup.integrator.CoefficientSets.rkf_56,
+        1.0E-4,  # minimum time step
+        np.inf,  # maximum time step
+        tolerance,
+        tolerance)
 
-    Parameters
-    ----------
-    propagator_index : int
-        Index that selects the propagator type (currently not used).
-        NOTE TO STUDENTS: this argument can be used to select specific combinations of propagator and integrators
-        (provided that the code is expanded).
-    integrator_index : int
-        Index that selects the integrator type as follows:
-            0 -> RK4(5)
-            1 -> RK5(6)
-            2 -> RK7(8)
-            3 -> RKDP7(8)
-            4 -> RK4
-    settings_index : int
-        Index that selects the tolerance or the step size
-        (depending on the integrator type).
-    simulation_start_epoch : float
-        Start of the simulation [s] with t=0 at J2000.
-
-    Returns
-    -------
-    integrator_settings : tudatpy.kernel.numerical_simulation.propagation_setup.integrator.IntegratorSettings
-        Integrator settings to be provided to the dynamics simulator.
-
-    """
-    # Define list of multi-stage integrators
-    multi_stage_integrators = [propagation_setup.integrator.CoefficientSets.rkf_45,
-                               propagation_setup.integrator.CoefficientSets.rkf_56,
-                               propagation_setup.integrator.CoefficientSets.rkf_78,
-                               propagation_setup.integrator.CoefficientSets.rkdp_87]
-    # Use variable step-size integrator
-    if integrator_index < 4:
-        # Select variable-step integrator
-        current_coefficient_set = multi_stage_integrators[integrator_index]
-        # Compute current tolerance
-        current_tolerance = 10.0 ** (-10.0 + settings_index)
-        # Create integrator settings
-        integrator = propagation_setup.integrator
-        # Here (epsilon, inf) are set as respectively min and max step sizes
-        # also note that the relative and absolute tolerances are the same value
-        integrator_settings = integrator.runge_kutta_variable_step_size(
-            1.0,
-            current_coefficient_set,
-            1.0E-4,
-            np.inf,
-            current_tolerance,
-            current_tolerance )
-    # Use fixed step-size integrator
-    else:
-        # Compute time step
-        fixed_step_size = 2 ** settings_index
-        # Create integrator settings
-        integrator = propagation_setup.integrator
-        integrator_settings = integrator.runge_kutta_fixed_step_size(
-            fixed_step_size, propagation_setup.integrator.CoefficientSets.rk_4)
     return integrator_settings
 
 
@@ -298,18 +339,65 @@ def get_propagator_settings(thrust_parameters,
         thrust_parameters,
         bodies,
         simulation_start_epoch)
+
     acceleration_settings_on_vehicle = {
         'Moon': [propagation_setup.acceleration.point_mass_gravity()],
-        'Vehicle': [thrust_settings]
+        'Vehicle': [thrust_settings],
     }
 
     # Here, model settings are modified
-    if model_choice == 1:
+    if model_choice == 1: # moon spherical 1
+        acceleration_settings_on_vehicle['Moon'] = [propagation_setup.acceleration.spherical_harmonic_gravity(1, 1)]
+
+    if model_choice == 2: # moon spherical 2
         acceleration_settings_on_vehicle['Moon'] = [propagation_setup.acceleration.spherical_harmonic_gravity(2, 2)]
-    elif model_choice == 2:
-        acceleration_settings_on_vehicle['Moon'] = [propagation_setup.acceleration.spherical_harmonic_gravity(4, 4)]
-    elif model_choice > 2:
+
+    if model_choice == 3: # moon spherical 3
+        acceleration_settings_on_vehicle['Moon'] = [propagation_setup.acceleration.spherical_harmonic_gravity(10, 10)]
+
+    if model_choice == 4: # moon spherical all
+        acceleration_settings_on_vehicle['Moon'] = [propagation_setup.acceleration.spherical_harmonic_gravity(100, 100)]
+
+    elif model_choice == 5: # earth point
         acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.point_mass_gravity()]
+
+    elif model_choice == 6: # earth spherical 1
+        acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.spherical_harmonic_gravity(1, 1)]
+
+    elif model_choice == 7: # earth spherical 2
+        acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.spherical_harmonic_gravity(2, 2)]
+
+    elif model_choice == 8: # earth spherical 3
+        acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.spherical_harmonic_gravity(10, 10)]
+
+    elif model_choice == 9: # earth spherical all
+        acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.spherical_harmonic_gravity(100, 100)]
+
+    elif model_choice == 10: # planets and sun
+        acceleration_settings_on_vehicle['Sun'] = [propagation_setup.acceleration.point_mass_gravity()]
+
+    elif model_choice == 11: # planets and sun
+        acceleration_settings_on_vehicle['Venus'] = [propagation_setup.acceleration.point_mass_gravity()]
+
+    elif model_choice == 12: # planets and sun
+        acceleration_settings_on_vehicle['Mars'] = [propagation_setup.acceleration.point_mass_gravity()]
+
+    elif model_choice == 13: # planets and sun
+        acceleration_settings_on_vehicle['Jupiter'] = [propagation_setup.acceleration.point_mass_gravity()]
+
+    elif model_choice == 14: # planets and sun
+        acceleration_settings_on_vehicle['Sun'] = [propagation_setup.acceleration.point_mass_gravity()]
+        acceleration_settings_on_vehicle['Venus'] = [propagation_setup.acceleration.point_mass_gravity()]
+        acceleration_settings_on_vehicle['Earth'] = [propagation_setup.acceleration.point_mass_gravity()]
+        acceleration_settings_on_vehicle['Mars'] = [propagation_setup.acceleration.point_mass_gravity()]
+        acceleration_settings_on_vehicle['Jupiter'] = [propagation_setup.acceleration.point_mass_gravity()]
+
+    # elif model_choice == 15:  # atmosphere wrt nominal (model 0)
+    #     acceleration_settings_on_vehicle['Moon'] = [propagation_setup.acceleration.aerodynamic()]
+
+    elif model_choice == 15:  # radiation pressure wrt nominal (model 0)
+        acceleration_settings_on_vehicle['Sun'] = [propagation_setup.acceleration.cannonball_radiation_pressure()]
+
     # Create acceleration models.
     acceleration_settings = {'Vehicle': acceleration_settings_on_vehicle}
     acceleration_models = propagation_setup.create_acceleration_models(
@@ -358,7 +446,6 @@ def get_propagator_settings(thrust_parameters,
                                                                  simulation_start_epoch,
                                                                  termination_settings,
                                                                  dependent_variables_to_save)
-
     return propagator_settings
 
 
