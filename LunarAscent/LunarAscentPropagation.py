@@ -140,8 +140,6 @@ thrust_parameters = [15629.13262285292,
 use_benchmark = True
 run_integrator_analysis = True
 
-# Choose whether output of the propagation is written to files
-write_results_to_file = True
 # Get path of current directory
 current_dir = os.path.dirname(__file__)
 
@@ -223,7 +221,7 @@ if use_benchmark:
         termination_settings,
         dependent_variables_to_save)
 
-    benchmark_output_path = current_dir + '/SimulationOutput/benchmarks/' if write_results_to_file else None
+    benchmark_output_path = current_dir + '/SimulationOutput/benchmarks/' # if write_results_to_file else None
 
     # Generate benchmarks
     benchmark_step_size = 1.0
@@ -300,11 +298,12 @@ if run_integrator_analysis:
                              propagation_setup.propagator.unified_state_model_exponential_map]
 
     # Define settings to loop over
-    number_of_propagators = len(available_propagators)
-    number_of_integrators = 5
+    n_propagators = 1 #7
+    n_integrators = 16
+    n_step_sizes = 5
 
     # Loop over propagators
-    for propagator_index in range(number_of_propagators):
+    for propagator_index in range(n_propagators):
         # Get current propagator, and define translational state propagation settings
         current_propagator = available_propagators[propagator_index]
 
@@ -318,24 +317,24 @@ if run_integrator_analysis:
             dependent_variables_to_save,
             current_propagator)
 
+
+        if propagator_index == 0:
+            integrator_indexes = range(n_integrators)
+            # integrator_indexes = [12, 13, 14]
+        else:
+            integrator_indexes = [0] # the best one
+
+
         # Loop over different integrators
-        for integrator_index in range(number_of_integrators):
-            # For RK4, more step sizes are used. NOTE TO STUDENTS, MODIFY THESE AS YOU SEE FIT!
-            if integrator_index > 3:
-                number_of_integrator_step_size_settings = 6
-            else:
-                number_of_integrator_step_size_settings = 4
+        for integrator_index in range(n_integrators):
 
             # Loop over all tolerances / step sizes
-            for step_size_index in range(number_of_integrator_step_size_settings):
-                # Print status
-                to_print = 'Current run: \n propagator_index = ' + str(propagator_index) + \
-                           '\n integrator_index = ' + str(integrator_index) \
-                           + '\n step_size_index = ' + str(step_size_index)
-                print(to_print)
+            for step_size_index in range(n_step_sizes):
+                print('Current run: \n propagator_index = ' + str(propagator_index) + '\n integrator_index = ' + str(integrator_index) + '\n step_size_index = ' + str(step_size_index))
+
                 # Set output path
-                output_path = current_dir + '/SimulationOutput/prop_' + str(propagator_index) + \
-                              '/int_' + str(integrator_index) + '/step_size_' + str(step_size_index) + '/'
+                output_path = current_dir + '/SimulationOutput/prop_' + str(propagator_index) + '/int_' + str(integrator_index) + '/step_size_' + str(step_size_index) + '/'
+
                 # Create integrator settings
                 current_integrator_settings = Util.get_integrator_settings(propagator_index,
                                                                            integrator_index,
@@ -344,10 +343,13 @@ if run_integrator_analysis:
                 current_propagator_settings.integrator_settings = current_integrator_settings
 
                 # Create Lunar Ascent Problem object
-                dynamics_simulator = numerical_simulation.create_dynamics_simulator(
-                    bodies, current_propagator_settings )
+                dynamics_simulator = numerical_simulation.create_dynamics_simulator(bodies, current_propagator_settings )
 
-                ### OUTPUT OF THE SIMULATION ###
+
+                ###########################################################################
+                # OUTPUT OF SIMULATIOIN #####################################
+                ###########################################################################
+
                 # Retrieve propagated state and dependent variables
                 state_history = dynamics_simulator.state_history
                 unprocessed_state_history = dynamics_simulator.unprocessed_state_history
@@ -357,52 +359,52 @@ if run_integrator_analysis:
                 function_evaluation_dict = dynamics_simulator.cumulative_number_of_function_evaluations
                 number_of_function_evaluations = list(function_evaluation_dict.values())[-1]
                 # Add it to a dictionary
-                dict_to_write = {'Number of function evaluations (ignore the line above)': number_of_function_evaluations}
+                dict_to_write = {'Number of function evaluations': number_of_function_evaluations}
                 # Check if the propagation was run successfully
                 propagation_outcome = dynamics_simulator.integration_completed_successfully
                 dict_to_write['Propagation run successfully'] = propagation_outcome
                 # Note if results were written to files
-                dict_to_write['Results written to file'] = write_results_to_file
+                dict_to_write['Results written to file'] = True
                 # Note if benchmark was run
                 dict_to_write['Benchmark run'] = use_benchmark
                 # Note if dependent variables were present
                 dict_to_write['Dependent variables present'] = are_dependent_variables_to_save
 
                 # Save results to a file
-                if write_results_to_file:
-                    save2txt(state_history, 'state_history.dat', output_path)
-                    save2txt(unprocessed_state_history, 'unprocessed_state_history.dat', output_path)
-                    save2txt(dependent_variable_history, 'dependent_variable_history.dat', output_path)
-                    save2txt(dict_to_write, 'ancillary_simulation_info.txt',   output_path)
+                save2txt(state_history, 'state_history.dat', output_path)
+                save2txt(unprocessed_state_history, 'unprocessed_state_history.dat', output_path)
+                save2txt(dependent_variable_history, 'dependent_variable_history.dat', output_path)
+                save2txt(dict_to_write, 'ancillary_simulation_info.txt',   output_path)
 
                 ### BENCHMARK COMPARISON ####
                 # Compare the simulation to the benchmarks and write differences to files
                 if use_benchmark:
                     # Initialize containers
                     state_difference = dict()
+
                     # Loop over the propagated states and use the benchmark interpolators
                     # NOTE TO STUDENTS: it can happen that the benchmark ends earlier than the regular simulation, due to
                     # the shorter step size. Therefore, the following lines of code will be forced to extrapolate the
                     # benchmark states (or dependent variables), producing a warning. Be aware of it!
+
                     for epoch in state_history.keys():
-                        state_difference[epoch] = state_history[epoch] - \
-                                                  benchmark_state_interpolator.interpolate(epoch)
+                        state_difference[epoch] = state_history[epoch] - benchmark_state_interpolator.interpolate(epoch)
+
                     # Write differences with respect to the benchmarks to files
-                    if write_results_to_file:
-                        save2txt(state_difference, 'state_difference_wrt_benchmark.dat', output_path)
-                    # Do the same for dependent variables, if present
-                    if are_dependent_variables_to_save:
-                        # Initialize containers
-                        dependent_difference = dict()
-                        # Loop over the propagated dependent variables and use the benchmark interpolators
-                        for epoch in dependent_variable_history.keys():
-                            dependent_difference[epoch] = dependent_variable_history[epoch] - \
-                                                          benchmark_dependent_variable_interpolator.interpolate(epoch)
+                    Util.write_with_exception(state_difference, 'state_difference_wrt_benchmark.dat', output_path)
+
+                    # Initialize containers
+                    dependent_difference = dict()
+                    # Loop over the propagated dependent variables and use the benchmark interpolators
+                    for epoch in dependent_variable_history.keys():
+                        dependent_difference[epoch] = dependent_variable_history[epoch] - benchmark_dependent_variable_interpolator.interpolate(epoch)
+
                         # Write differences with respect to the benchmarks to files
-                        if write_results_to_file:
-                            save2txt(dependent_difference,
-                                     'dependent_variable_difference_wrt_benchmark.dat',
-                                     output_path)
+                        Util.write_with_exception(dependent_difference, 'dependent_variable_difference_wrt_benchmark.dat', output_path)
+
+
+
+
     # Print the ancillary information
     print('\n### ANCILLARY SIMULATION INFORMATION ###')
     for (elem, (info, result)) in enumerate(dict_to_write.items()):
