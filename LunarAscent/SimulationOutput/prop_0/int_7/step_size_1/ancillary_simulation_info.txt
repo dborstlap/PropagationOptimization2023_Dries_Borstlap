@@ -1,0 +1,5 @@
+Number of function evaluations	4366
+Propagation run successfully	1
+Results written to file	1
+Benchmark run	1
+Dependent variables present	1
